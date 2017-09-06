@@ -5,8 +5,12 @@
   
 
 ;;;;;;;;;;;;;;;
-
-    
+   .rsset $0000
+CUR_BG_TILE .rs 1   
+NEXT_BG     .rs 1
+BULK_DRAW_FLAG .rs 1
+LAST_B		   .rs 1
+CUR_B		   .rs 1
   .bank 0
   .org $C000 
 RESET:
@@ -63,24 +67,12 @@ LoadPalettesLoop:
   BNE LoadPalettesLoop  ; Branch to LoadPalettesLoop if compare was Not Equal to zero
                         ; if compare was equal to 32, keep going down
               
-              
-              
-LoadBackground:
-  LDA $2002             ; read PPU status to reset the high/low latch
   LDA #$20
-  STA $2006             ; write the high byte of $2000 address
+  STA CUR_BG_TILE  
   LDA #$00
-  STA $2006             ; write the low byte of $2000 address
-  LDX #$1E              ; start out at 0
-  LDY #$20
-LoadBackgroundLoop:
-  LDA #$10     ; load data from address (background + the value in x)
-  STA $2007             ; write to PPU
-  DEY                   ; X = X + 1
-  BNE LoadBackgroundLoop  ; Branch to LoadBackgroundLoop if compare was Not Equal to zero
-  LDY #$20
-  DEX
-  BNE LoadBackgroundLoop
+  STA BULK_DRAW_FLAG
+              
+  JSR LoadBackground
               
   LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
   STA $2000
@@ -89,47 +81,59 @@ LoadBackgroundLoop:
   STA $2001
 
 Forever:
-  JMP Forever     ;jump back to Forever, infinite loop
-  
- 
-
-NMI:
-  LDA #$00
-  STA $2003       ; set the low byte (00) of the RAM address
-  LDA #$02
-  STA $4014       ; set the high byte (02) of the RAM address, start the transfer
-
-
 LatchController:
   LDA #$01
   STA $4016
   LDA #$00
   STA $4016       ; tell both the controllers to latch buttons
-
-
+  
 ReadA: 
   LDA $4016       ; player 1 - A
   AND #%00000001  ; only look at bit 0
   BEQ ReadADone   ; branch to ReadADone if button is NOT pressed (0)
                   ; add instructions here to do something when button IS pressed (1)
-  LDA $0203       ; load sprite X position
-  CLC             ; make sure the carry flag is clear
-  ADC #$01        ; A = A + 1
-  STA $0203       ; save sprite X position
 ReadADone:        ; handling this button is done
   
-
 ReadB: 
   LDA $4016       ; player 1 - B
   AND #%00000001  ; only look at bit 0
-  BEQ ReadBDone   ; branch to ReadBDone if button is NOT pressed (0)
+  BEQ ReadBNoPress   ; branch to ReadBDone if button is NOT pressed (0)
                   ; add instructions here to do something when button IS pressed (1)
-  LDA $0203       ; load sprite X position
-  SEC             ; make sure carry flag is set
-  SBC #$01        ; A = A - 1
-  STA $0203       ; save sprite X position
-ReadBDone:        ; handling this button is done
+  LDA #$1
+  STA CUR_B
+  JMP ReadBDone
+ReadBNoPress:        ; handling this button is done
+  LDA #$00
+  STA CUR_B
+  LDA LAST_B
+  BEQ ReadBDone
+  LDA CUR_BG_TILE
+  CLC
+  ADC #$10
+  STA CUR_BG_TILE
+  LDA #$1
+  STA BULK_DRAW_FLAG
+  LDA #%00000110
+  STA $2001
+  JSR LoadBackground
+  LDA #$00
+  STA BULK_DRAW_FLAG
+  LDA #%00011110
+  STA $2001
+ReadBDone:
+  LDA CUR_B
+  STA LAST_B
+  JMP Forever     ;jump back to Forever, infinite loop
+  
+ 
 
+NMI:
+  ;LDA #$00
+  ;STA $2003       ; set the low byte (00) of the RAM address
+  ;LDA #$02
+  ;STA $4014       ; set the high byte (02) of the RAM address, start the transfer
+  LDA BULK_DRAW_FLAG
+  BNE NMI_DONE
 
   ;;This is the PPU clean up section, so rendering the next frame starts properly.
   LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
@@ -139,12 +143,28 @@ ReadBDone:        ; handling this button is done
   LDA #$00        ;;tell the ppu there is no background scrolling
   STA $2005
   STA $2005
-  
+NMI_DONE:
   RTI             ; return from interrupt
  
 ;;;;;;;;;;;;;;  
   
-  
+LoadBackground:
+  LDA $2002             ; read PPU status to reset the high/low latch
+  LDA #$20
+  STA $2006             ; write the high byte of $2000 address
+  LDA #$00
+  STA $2006             ; write the low byte of $2000 address
+  LDX #$1E              ; start out at 0
+  LDY #$20
+LoadBackgroundLoop:
+  LDA CUR_BG_TILE     ; load data from address (background + the value in x)
+  STA $2007             ; write to PPU
+  DEY                   ; X = X + 1
+  BNE LoadBackgroundLoop  ; Branch to LoadBackgroundLoop if compare was Not Equal to zero
+  LDY #$20
+  DEX
+  BNE LoadBackgroundLoop
+  RTS  
   
   .bank 1
   .org $E000
