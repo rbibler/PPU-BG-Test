@@ -71,14 +71,16 @@ LoadBackground:
   STA $2006             ; write the high byte of $2000 address
   LDA #$00
   STA $2006             ; write the low byte of $2000 address
-  LDX #$00              ; start out at 0
+  LDX #$1E              ; start out at 0
+  LDY #$20
 LoadBackgroundLoop:
   LDA #$10     ; load data from address (background + the value in x)
   STA $2007             ; write to PPU
-  INX                   ; X = X + 1
-  ;CPX #$80              ; Compare X to hex $80, decimal 128 - copying 128 bytes
+  DEY                   ; X = X + 1
   BNE LoadBackgroundLoop  ; Branch to LoadBackgroundLoop if compare was Not Equal to zero
-                        ; if compare was equal to 128, keep going down
+  LDY #$20
+  DEX
+  BNE LoadBackgroundLoop
               
   LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
   STA $2000
