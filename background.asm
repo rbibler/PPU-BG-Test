@@ -1,18 +1,39 @@
-  .inesprg 1   ; 1x 16KB PRG code
-  .ineschr 1   ; 1x  8KB CHR data
-  .inesmap 0   ; mapper 0 = NROM, no bank swapping
-  .inesmir 1   ; background mirroring
+  .inesprg 8   ; 8x 16KB PRG code
+  .ineschr 0   ; 1x  8KB CHR data
+  .inesmap $20   ; mapper 0 = NROM, no bank swapping
+  .inesmir $08   ; background mirroring
   
 
 ;;;;;;;;;;;;;;;
+;	Bank structure:
+;	0: $0000 - $1FFF
+;	1: $2000 - $3FFF
+;	2: $4000 - $5FFF
+;	3: $6000 - 
+;
+;
+;
+;
+;
+;;;;;;;;;;;;;;;
+
+PPUMASK EQU $2001
+PPUADDR EQU $2006
+PPUDATA EQU $2007
+
    .rsset $0000
 CUR_BG_TILE .rs 1   
 NEXT_BG     .rs 1
 BULK_DRAW_FLAG .rs 1
 LAST_B		   .rs 1
 CUR_B		   .rs 1
-  .bank 0
-  .org $C000 
+CUR_BANK	   .rs 1
+chr_data_ptr   .rs 2
+  .bank 14
+  .org $C000
+chr_data: .incbin "test_rows.chr"   ;includes 8KB graphics file
+  .bank 15
+  .org $E000 
 RESET:
   SEI          ; disable IRQs
   CLD          ; disable decimal mode
@@ -73,6 +94,7 @@ LoadPalettesLoop:
   STA BULK_DRAW_FLAG
               
   JSR LoadBackground
+  jsr copy_mytiles_chr
               
   LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
   STA $2000
@@ -166,12 +188,41 @@ LoadBackgroundLoop:
   BNE LoadBackgroundLoop
   RTS  
   
-  .bank 1
-  .org $E000
+bankswitch_y:
+  sty CUR_BANK
+bankswitch_nosave:
+  lda banktable, y
+  sta banktable, y
+  rts
+  
+copy_mytiles_chr
+  lda #$00
+  sta chr_data_ptr
+  lda #$C0
+  sta chr_data_ptr+1
+  
+  ldy #0
+  sty PPUMASK
+  sty PPUADDR
+  sty PPUADDR
+  ldx #32
+loop:
+  lda [chr_data_ptr],y
+  sta PPUDATA
+  iny
+  bne loop
+  inc chr_data_ptr+1
+  dex
+  bne loop
+  rts  
+  
 palette:
   .db $22,$29,$1A,$0F,  $22,$36,$17,$0F,  $22,$30,$21,$0F,  $22,$27,$17,$0F   ;;background palette
   .db $22,$1C,$15,$14,  $22,$02,$38,$3C,  $22,$1C,$15,$14,  $22,$02,$38,$3C   ;;sprite palette
 
+banktable:
+  .db $00, $01, $02, $03, $04, $05, $06
+  .db $07, $08, $09, $0A, $0B, $0C, $0D, $0E
 
   .org $FFFA     ;first of the three vectors starts here
   .dw NMI        ;when an NMI happens (once per frame if enabled) the 
@@ -180,10 +231,3 @@ palette:
                    ;to the label RESET:
   .dw 0          ;external interrupt IRQ is not used in this tutorial
   
-  
-;;;;;;;;;;;;;;  
-  
-  
-  .bank 2
-  .org $0000
-  .incbin "test_rows.chr"   ;includes 8KB graphics file from SMB1
